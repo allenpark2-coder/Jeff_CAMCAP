@@ -1,0 +1,14 @@
+﻿=== camcap Windows verify part 3 (build) 2026-09-04 16:51:44 ===
+root: C:\Users\allen\camcap   elevated: True
+
+--- tools\build.ps1 (onedir, console) ---
+  C:\Users\allen\camcap\dist\camcap\_internal\pydivert\windivert_dll\WinDivert64.dll  (47616 bytes)
+  C:\Users\allen\camcap\dist\camcap\_internal\pydivert\windivert_dll\WinDivert64.sys  (94144 bytes)
+
+--- dist 內容 ---
+camcap.exe OK, dist 總大小 30.4 MB
+--- 打包成 zip ---
+zip: C:\Users\allen\camcap\camcap-windows-20260904.zip  (16.7 MB)
+
+下一步（系統管理員 PowerShell）：
+  powershell -ExecutionPolicy Bypass -File tools\verify-windows.ps1 -Smoke

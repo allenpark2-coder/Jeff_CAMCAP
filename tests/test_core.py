@@ -11,7 +11,7 @@ from requests.auth import HTTPDigestAuth
 
 from camcap import wsse
 from camcap.capture import CaptureSession
-from camcap.model import LogStore, redact_event
+from camcap.model import LogStore, redact_event, redact_text
 from camcap.replay import ReplayOptions, Replayer
 
 from fake_camera import FakeCamera
@@ -209,24 +209,51 @@ def test_windivert_filter_avoids_unsupported_not_over_parens():
     assert "ip.SrcAddr == 10.253.58.14 and tcp.SrcPort == 10222" in flt
 
 
-def test_redaction_covers_json_login_form_and_cookies():
-    """Found on the Windows run: the board's Web UI logs in with a JSON body and a
-    cookie session, neither of which the first redaction pass touched."""
+def test_redaction_covers_json_and_form_login_bodies():
+    """CV75 devkit 的 Web UI 走 `POST /api/v1/auth/login` + cookie session，
+    密碼在 JSON body 裡；舊版 redact_text 只認 Digest / WSSE / URL，會把明文密碼
+    留在 --redact 之後的輸出裡（DQA 會到處貼 log）。"""
+    from camcap.model import redact_text
+
+    j = redact_text('{"username":"admin","password":"admin"}')
+    assert '"password":"<redacted>"' in j
+    assert '"username":"admin"' in j  # 帳號留著，不然 log 沒有辨識度
+
+    nested = redact_text(
+        '{"a":{"newPassword":"NEWPW1","apiKey":"KEY2"},"list":[{"token":"TOK3"}]}')
+    for leaked in ("NEWPW1", "KEY2", "TOK3"):
+        assert leaked not in nested, leaked
+    assert nested.count("<redacted>") == 3
+
+    form = redact_text("user=admin&password=hunter2&remember=1")
+    assert "hunter2" not in form and "user=admin" in form and "remember=1" in form
+
+    # 不是 JSON 的東西不能被吃掉
+    assert redact_text("plain body, no creds") == "plain body, no creds"
+    assert redact_text("") == ""
+
+
+def test_redaction_still_covers_digest_wsse_and_rtsp_url():
+    from camcap.model import redact_text
+
+    assert 'response="<redacted>"' in redact_text('Digest username="a", response="deadbeef01"')
+    assert "<redacted></wsse:Password>" in redact_text("<wsse:Password Type='x'>secret</wsse:Password>")
+    assert redact_text("rtsp://admin:hunter2@10.0.0.1/live") == "rtsp://admin:<redacted>@10.0.0.1/live"
+
+
+def test_redaction_covers_cookies_and_response_headers():
+    """Merged from the Linux-side fix: Cookie / Set-Cookie / session tokens must go too."""
     from camcap.model import Event
     e = Event(id=1, ts=1.0, stream=1, proto="cgi", dst_ip="1.2.3.4", dst_port=80, src_port=5,
               method="POST", url="http://1.2.3.4/api/v1/auth/login?password=x",
-              req_headers={"cookie": "opsis_session=abc123; theme=dark", "content-type": "application/json"},
+              req_headers={"cookie": "opsis_session=abc123; theme=dark"},
               req_body='{"username":"admin","password":"admin","remember":true}',
               resp_status=200,
               resp_headers={"set-cookie": "opsis_session=f78591ad00; Path=/; HttpOnly", "content-type": "application/json"},
               resp_body='{"status":"ok","token":"eyJhbGciOi","user":"admin"}')
     r = redact_event(e)
-    assert '"password":"<redacted>"' in r.req_body and '"username":"admin"' in r.req_body
     assert r.req_headers["cookie"] == "<redacted>"
-    assert r.resp_headers["set-cookie"] == "<redacted>"
+    assert r.resp_headers["set-cookie"] == "<redacted>" and r.resp_headers["content-type"] == "application/json"
     assert '"token":"<redacted>"' in r.resp_body and '"user":"admin"' in r.resp_body
     assert "password=<redacted>" in r.url
-    # form-encoded body, password at the very start
-    e2 = Event(id=2, ts=1.0, stream=1, proto="cgi", dst_ip="1.2.3.4", dst_port=80, src_port=5,
-               req_body="password=s3cret&user=admin", url="http://1.2.3.4/login")
-    assert redact_event(e2).req_body == "password=<redacted>&user=admin"
+    assert redact_text("ok opsis_session=deadbeef; x=1") == "ok opsis_session=<redacted>; x=1"

@@ -1,0 +1,38 @@
+﻿=== camcap Windows verify part 4 (packaged exe smoke, admin) 2026-09-04 16:53:05 ===
+exe: C:\Users\allen\camcap\dist\camcap\camcap.exe   cam: 10.253.58.186
+
+--- stderr（banner / 錯誤在這）---
+[camcap] intercepting 10.253.58.186 via 10.253.58.14:10935
+--- stdout 前 20 筆 event ---
+2026-09-04T16:53:06.442+08:00  cgi   GET    http://10.253.58.186/api/v1/storage/status                   502
+2026-09-04T16:53:10.445+08:00  cgi   GET    http://10.253.58.186/api/v1/storage/status                   502
+2026-09-04T16:53:12.099+08:00  cgi   GET    http://10.253.58.186/api/v1/system/info                      200
+2026-09-04T16:53:12.100+08:00  cgi   GET    http://10.253.58.186/api/v1/config/general                   200
+2026-09-04T16:53:12.102+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:53:12.794+08:00  cgi   GET    http://10.253.58.186/api/v1/config/video                     200
+2026-09-04T16:53:12.802+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:53:13.311+08:00  cgi   GET    http://10.253.58.186/api/v1/config/isp                       200
+2026-09-04T16:53:13.319+08:00  cgi   GET    http://10.253.58.186/api/v1/isp/status                       200
+2026-09-04T16:53:13.364+08:00  cgi   GET    http://10.253.58.186/ws/live?stream=1                        
+2026-09-04T16:53:13.674+08:00  cgi   GET    http://10.253.58.186/api/v1/config/audio                     200
+2026-09-04T16:53:13.675+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:53:14.047+08:00  cgi   GET    http://10.253.58.186/api/v1/config/rtsp                      200
+2026-09-04T16:53:14.052+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:53:14.434+08:00  cgi   GET    http://10.253.58.186/api/v1/config/isp                       200
+2026-09-04T16:53:14.435+08:00  cgi   GET    http://10.253.58.186/api/v1/isp/status                       200
+2026-09-04T16:53:14.465+08:00  cgi   GET    http://10.253.58.186/ws/live?stream=1                        
+2026-09-04T16:53:14.732+08:00  cgi   GET    http://10.253.58.186/api/v1/config/video                     200
+2026-09-04T16:53:14.733+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:53:15.227+08:00  cgi   GET    http://10.253.58.186/api/v1/config/isp                       200
+--- 共 51 行 event ---
+
+--- sc query WinDivert ---
+
+SERVICE_NAME: WinDivert 
+        TYPE               : 1  KERNEL_DRIVER  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0

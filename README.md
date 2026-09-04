@@ -81,10 +81,24 @@ powershell -ExecutionPolicy Bypass -File tools\verify-windows.ps1          # 不
 powershell -ExecutionPolicy Bypass -File tools\verify-windows.ps1 -Live    # 需系統管理員
 ```
 
+## 打包給 DQA
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\verify-windows.ps1 -Build    # 不要提權
+powershell -ExecutionPolicy Bypass -File tools\verify-windows.ps1 -Smoke    # 需系統管理員
+```
+
+產出 `camcap-windows-<date>.zip`（16.7 MB，內含 `camcap.exe` + `DQA-README.md`）。
+2026-09-04 實測：打包後的 exe 從 `_internal\` 載入 WinDivert driver 正常，30 秒抓到 51 筆。
+
 ### 尚未實機驗證（Windows 端）
 1. ~~pydivert 3.x 的 Packet 屬性與 `Flag.SNIFF` 名稱~~ → 3.1.3 與 2.x 介面一致，已驗。
 2. ~~改寫 dst 到網卡 IP 再注入，client 是否正確收到回應~~ → 已驗，瀏覽器正常收到回應。
-3. PyInstaller onefile 內含 WinDivert `.sys` 從 temp 目錄載入是否被擋；不行就用 onedir。
-4. pywebview 在 Windows 使用 EdgeChromium (WebView2) runtime，目標機需已安裝。
-5. ~~`redact_event()` 不會遮 JSON 登入 body~~ → 已補：JSON/form 的 password/token 類 key、Cookie/Set-Cookie、session token 一律遮（`test_redaction_covers_json_login_form_and_cookies`）。
+3. ~~PyInstaller 打包後 WinDivert `.sys` 載不載得起來~~ → **onedir 已驗**；
+   onefile（`.sys` 先解到 `%TEMP%`）刻意沒試，onedir 夠用就不冒那個險。
+4. ~~pywebview / WebView2~~ → 已驗（2026-09-04，打包後的 exe）：UI 開得起來、事件列表與明細正常、「下載前遮罩密碼」預設勾選。
+5. ~~`redact_event()` 不會遮 JSON 登入 body~~ → 已修（`redact_json()` + form-urlencoded）。
 6. WebSocket（`/ws/events`）升級後的 frame 沒解析。
+9. **HTTPS / RTSPS 看不到內容** —— TLS 流量掉進 `raw`，只有 byte 計數；camcap 不做 MITM。而且 note 目前寫「vendor SDK protocol?」會被誤讀成私有協定。最小修法（解 ClientHello 標示 SNI）與 MITM 的取捨見 `docs/windows-debug-log.md` 未解問題 9。
+7. cookie session 的重播沒驗過（Digest 重播已驗）。
+8. 還沒在任何一台 DQA 機器上試裝 —— 防毒誤判、HVCI / driver blocklist 在開發機上測不出來。

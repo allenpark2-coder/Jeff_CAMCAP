@@ -209,16 +209,36 @@ def to_har_dict(events: Iterable[Event]) -> dict:
 
 _RE_DIGEST_RESP = re.compile(r'(response=")[0-9a-fA-F]+(")')
 _RE_WSSE_PW = re.compile(r'(<(?:[\w.-]+:)?Password\b[^>]*>)[^<]*(</(?:[\w.-]+:)?Password>)', re.S)
-_RE_URL_PW = re.compile(r'((?:^|[?&])(?:password|pwd|pass|passwd)=)[^&#\s]*', re.I | re.M)
+_RE_URL_PW = re.compile(r'([?&](?:password|pwd|pass|passwd)=)[^&#]*', re.I)
 _RE_RTSP_URL_CRED = re.compile(r'(rtsp://[^:/@\s]+:)[^@\s]+@')
-# JSON bodies such as {"username":"admin","password":"admin"} or {"token":"..."}
-_RE_JSON_SECRET = re.compile(
-    r'("(?:password|passwd|pwd|pass|old_password|new_password|secret|token|access_token|api_key|apikey|session)"\s*:\s*")[^"]*(")',
-    re.I)
-# cookie-ish session tokens anywhere (Set-Cookie, Cookie, bodies): name contains "session" or "sid"
+
+_RE_FORM_PW = re.compile(
+    r"(\b(?:password|passwd|pwd|pass|secret|token|api_?key|auth)=)[^&\s]*", re.I)
+# cookie-ish session tokens anywhere (Set-Cookie, Cookie, bodies): name contains session/sessid/sid/token
 _RE_SESSION_TOKEN = re.compile(r'([A-Za-z0-9_.-]*(?:session|sessid|sid|token)[A-Za-z0-9_.-]*=)[^;,&\s"]+', re.I)
 
 REDACTED = "<redacted>"
+
+#: body / JSON key 只要「包含」這些片段就遮掉（大小寫不敏感）。
+#: 覆蓋 password / passwd / pwd / new_password / oldPassword / token /
+#: access_token / apiKey / client_secret / privateKey ...
+SECRET_KEY_PARTS = ("password", "passwd", "pwd", "secret", "token", "apikey",
+                    "api_key", "credential", "privatekey", "private_key")
+
+
+def _is_secret_key(key: str) -> bool:
+    k = key.replace("-", "").replace("_", "").lower()
+    return any(part.replace("_", "") in k for part in SECRET_KEY_PARTS)
+
+
+def redact_json(obj):
+    """遞迴遮掉 JSON 結構裡的密碼類欄位，其餘原樣保留。"""
+    if isinstance(obj, dict):
+        return {k: (REDACTED if _is_secret_key(str(k)) and obj[k] is not None
+                    else redact_json(v)) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [redact_json(v) for v in obj]
+    return obj
 
 
 def redact_text(s: str) -> str:
@@ -226,7 +246,21 @@ def redact_text(s: str) -> str:
     s = _RE_WSSE_PW.sub(r"\1" + REDACTED + r"\2", s)
     s = _RE_URL_PW.sub(r"\1" + REDACTED, s)
     s = _RE_RTSP_URL_CRED.sub(r"\1" + REDACTED + "@", s)
-    s = _RE_JSON_SECRET.sub(r"\1" + REDACTED + r"\2", s)
+    # 整包 JSON body（REST 登入最常見的形狀）：
+    #   {"username": "admin", "password": "admin"} -> password 變 <redacted>
+    # 只在整串解得開、而且是 dict / list 的時候才動，否則走下面的 regex。
+    stripped = s.strip()
+    if stripped[:1] in ("{", "["):
+        try:
+            parsed = json.loads(stripped)
+        except (ValueError, TypeError):
+            pass
+        else:
+            if isinstance(parsed, (dict, list)):
+                s = json.dumps(redact_json(parsed), ensure_ascii=False, separators=(",", ":"))
+                return _RE_SESSION_TOKEN.sub(r"\1" + REDACTED, s)
+    # form-urlencoded body / query string: password=xxx&user=yyy
+    s = _RE_FORM_PW.sub(r"\1" + REDACTED, s)
     s = _RE_SESSION_TOKEN.sub(r"\1" + REDACTED, s)
     return s
 
@@ -246,8 +280,8 @@ def redact_event(e: Event) -> Event:
     d["req_headers"] = hdrs
     rh = dict(d["resp_headers"])
     for k in list(rh):
-        if k.lower() in ("set-cookie", "x-auth-token", "authorization", "www-authenticate"):
-            rh[k] = redact_text(rh[k]) if k.lower() == "www-authenticate" else REDACTED
+        if k.lower() in ("set-cookie", "x-auth-token", "authorization"):
+            rh[k] = REDACTED
     d["resp_headers"] = rh
     d["req_body"] = redact_text(d["req_body"])
     d["resp_body"] = redact_text(d["resp_body"])
