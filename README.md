@@ -50,6 +50,9 @@ sudo iptables -t nat -D OUTPUT -j CAMCAP; sudo iptables -t nat -F CAMCAP; sudo i
 
 ## Windows（真正攔截）
 
+VirtualBox 開發時：Linux 端 `git archive` 到共享資料夾，Windows 端以**系統管理員** PowerShell 執行
+`tools\setup-windows.ps1`（會複製到 `%USERPROFILE%\camcap`、建 venv、裝套件、跑測試、印出下一步）。手動則：
+
 ```powershell
 py -3.12 -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -e .[windows,dev]
