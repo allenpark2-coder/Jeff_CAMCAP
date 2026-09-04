@@ -55,6 +55,26 @@ def local_ip_for(target_ip: str) -> str:
         s.close()
 
 
+def check_filter(flt: str) -> None:
+    """Validate a WinDivert filter string, raising with WinDivert's own message.
+
+    ``WinDivertHelperCompileFilter`` is a user-mode helper in WinDivert64.dll:
+    no driver load, no Administrator needed. Calling it before ``WinDivertOpen``
+    turns an opaque ``[WinError 87] 參數錯誤`` into the exact error text and the
+    character offset inside the filter.
+    """
+    import pydivert
+
+    ok, pos, msg = pydivert.WinDivert.check_filter(flt)
+    if not ok:
+        pos = int(pos or 0)
+        raise ValueError(
+            f"invalid WinDivert filter at offset {pos}: {msg or 'syntax error'}\n"
+            f"  {flt}\n"
+            f"  {' ' * pos}^"
+        )
+
+
 class Redirector(threading.Thread):
     def __init__(self, cam_ip: str, local_ip: str, relay_port: int, nat: NatTable,
                  src_port_range: Tuple[int, int] = (40000, 41000),
@@ -72,9 +92,20 @@ class Redirector(threading.Thread):
 
     @property
     def filter(self) -> str:
+        """WinDivert filter covering both rewrite rules.
+
+        NOTE (實機踩到的坑，2026-09-04): WinDivert 的 filter 語言只允許 ``not``
+        套在**單一 test** 上 —— 實作方式是把該 test 的比較運算子反過來
+        (``WinDivertParseTest`` 吃掉 ``TOKEN_NOT`` 後直接要求一個 field)，
+        **不能**套在括號子運算式上。所以
+        ``not (tcp.SrcPort >= lo and tcp.SrcPort < hi)`` 是語法錯誤，
+        ``WinDivertHelperCompileFilter`` 失敗、``WinDivertOpen`` 回
+        ERROR_INVALID_PARAMETER (WinError 87)。這裡用 De Morgan 展開成
+        ``(tcp.SrcPort < lo or tcp.SrcPort >= hi)``，語意完全相同。
+        """
         return (
             "outbound and ip and tcp and ("
-            f"(ip.DstAddr == {self.cam_ip} and not (tcp.SrcPort >= {self.lo} and tcp.SrcPort < {self.hi}))"
+            f"(ip.DstAddr == {self.cam_ip} and (tcp.SrcPort < {self.lo} or tcp.SrcPort >= {self.hi}))"
             f" or (ip.SrcAddr == {self.local_ip} and tcp.SrcPort == {self.relay_port})"
             ")"
         )
@@ -85,6 +116,7 @@ class Redirector(threading.Thread):
     def run(self) -> None:
         import pydivert
         try:
+            check_filter(self.filter)
             with pydivert.WinDivert(self.filter) as w:
                 for pkt in w:
                     if self._stop.is_set():
@@ -131,6 +163,7 @@ class WsDiscoverySniffer(threading.Thread):
         import pydivert
         flt = "udp and (udp.DstPort == 3702 or udp.SrcPort == 3702)"
         try:
+            check_filter(flt)
             with pydivert.WinDivert(flt, flags=pydivert.Flag.SNIFF) as w:
                 for pkt in w:
                     if self._stop.is_set():

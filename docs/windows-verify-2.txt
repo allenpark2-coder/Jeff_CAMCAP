@@ -1,0 +1,237 @@
+﻿=== camcap Windows verify part 2 (live, admin) 2026-09-04 16:31:28 ===
+root: C:\Users\allen\camcap  cam: 10.253.58.186  seconds: 90
+
+--- WinDivertOpen 實測 (diag --open) ---
+python      : 3.12.10 64bit (C:\Users\allen\camcap\.venv\Scripts\python.exe)
+pydivert    : 3.1.3
+WinDivert64.dll: OK C:\Users\allen\camcap\.venv\Lib\site-packages\pydivert\windivert_dll\WinDivert64.dll (47616 bytes)
+WinDivert64.sys: OK C:\Users\allen\camcap\.venv\Lib\site-packages\pydivert\windivert_dll\WinDivert64.sys (94144 bytes)
+local ip    : 10.253.58.14  (route to 10.253.58.186)
+
+--- WinDivertHelperCompileFilter (no driver, no admin) ---
+[ OK ] true
+[ OK ] outbound and tcp
+[ OK ] bare ip
+[ OK ] dst addr
+[ OK ] >= only
+[ OK ] not <test>
+[FAIL] not (a and b)  <-- 舊寫法的可疑點: offset 4: Filter expression parse error
+       not (tcp.SrcPort >= 40000 and tcp.SrcPort < 41000)
+           ^
+[FAIL] !(a and b): offset 1: Filter expression parse error
+       !(tcp.SrcPort >= 40000 and tcp.SrcPort < 41000)
+        ^
+[ OK ] De Morgan 展開
+[ OK ] WSD sniffer filter
+[FAIL] OLD 完整 filter: offset 66: Filter expression parse error
+       outbound and ip and tcp and ((ip.DstAddr == 10.253.58.186 and not (tcp.SrcPort >= 40000 and tcp.SrcPort < 41000)) or (ip.SrcAddr == 10.253.58.14 and tcp.SrcPort == 10222))
+                                                                         ^
+[ OK ] NEW 完整 filter
+
+--- WinDivertOpen (SNIFF, 需 Administrator) ---
+[ OK ] open: WSD sniffer filter
+[ OK ] open: NEW 完整 filter
+
+3 failure(s) total, 0 of them on filters camcap actually uses.
+（ladder 中間那幾條本來就是拿來確認語法邊界的，FAIL 是預期內的資訊。）
+
+--- timed capture ---
+python.exe : [camcap] intercepting 10.253.58.186 via 10.253.58.14:10607
+位於 C:\Users\allen\camcap\tools\verify-windows.ps1:72 字元:5
++     & $py tools\timed-capture.py $Cam $Seconds first.jsonl 2>&1
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([camcap] interc...253.58.14:10607:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+2026-09-04T16:32:10.452+08:00  cgi   GET    http://10.253.58.186/api/v1/storage/status                   502
+2026-09-04T16:32:11.462+08:00  cgi   GET    http://10.253.58.186/ws/events                               
+2026-09-04T16:32:11.519+08:00  cgi   GET    http://10.253.58.186/ws/events                               
+2026-09-04T16:32:31.934+08:00  cgi   GET    http://10.253.58.186/                                        200
+2026-09-04T16:32:32.003+08:00  cgi   GET    http://10.253.58.186/css/style.css                           200
+2026-09-04T16:32:32.005+08:00  cgi   GET    http://10.253.58.186/assets/unileap_logo_color.png           200
+2026-09-04T16:32:32.007+08:00  cgi   GET    http://10.253.58.186/js/vendor/mpegts.js                     200
+2026-09-04T16:32:32.083+08:00  cgi   GET    http://10.253.58.186/js/app.js                               200
+2026-09-04T16:32:32.102+08:00  cgi   GET    http://10.253.58.186/js/router.js                            200
+2026-09-04T16:32:32.102+08:00  cgi   GET    http://10.253.58.186/js/components/nav.js                    200
+2026-09-04T16:32:32.102+08:00  cgi   GET    http://10.253.58.186/js/caps.js                              200
+2026-09-04T16:32:32.116+08:00  cgi   GET    http://10.253.58.186/js/api.js                               200
+2026-09-04T16:32:32.118+08:00  cgi   GET    http://10.253.58.186/js/store.js                             200
+2026-09-04T16:32:32.119+08:00  cgi   GET    http://10.253.58.186/js/components/auth-guard.js             200
+2026-09-04T16:32:32.126+08:00  cgi   GET    http://10.253.58.186/js/auth-store.js                        200
+2026-09-04T16:32:32.128+08:00  cgi   GET    http://10.253.58.186/js/components/conn.js                   200
+2026-09-04T16:32:32.129+08:00  cgi   GET    http://10.253.58.186/js/components/dirty.js                  200
+2026-09-04T16:32:32.136+08:00  cgi   GET    http://10.253.58.186/js/components/validate.js               200
+2026-09-04T16:32:32.137+08:00  cgi   GET    http://10.253.58.186/js/components/alerts.js                 200
+2026-09-04T16:32:32.137+08:00  cgi   GET    http://10.253.58.186/js/pages/system/dashboard.js            200
+2026-09-04T16:32:32.146+08:00  cgi   GET    http://10.253.58.186/js/pages/system/info.js                 200
+2026-09-04T16:32:32.149+08:00  cgi   GET    http://10.253.58.186/js/pages/system/maintenance.js          200
+2026-09-04T16:32:32.150+08:00  cgi   GET    http://10.253.58.186/js/pages/system/time.js                 200
+2026-09-04T16:32:32.157+08:00  cgi   GET    http://10.253.58.186/js/pages/system/server.js               200
+2026-09-04T16:32:32.161+08:00  cgi   GET    http://10.253.58.186/js/pages/system/first-login.js          200
+2026-09-04T16:32:32.161+08:00  cgi   GET    http://10.253.58.186/js/pages/network/tcpip.js               200
+2026-09-04T16:32:32.171+08:00  cgi   GET    http://10.253.58.186/js/pages/network/wifi.js                200
+2026-09-04T16:32:32.171+08:00  cgi   GET    http://10.253.58.186/js/pages/system/security.js             200
+2026-09-04T16:32:32.172+08:00  cgi   GET    http://10.253.58.186/js/pages/network/mqtt.js                200
+2026-09-04T16:32:32.182+08:00  cgi   GET    http://10.253.58.186/js/pages/media/live.js                  200
+2026-09-04T16:32:32.183+08:00  cgi   GET    http://10.253.58.186/js/pages/media/video.js                 200
+2026-09-04T16:32:32.183+08:00  cgi   GET    http://10.253.58.186/js/pages/media/image.js                 200
+2026-09-04T16:32:32.199+08:00  cgi   GET    http://10.253.58.186/js/pages/media/audio.js                 200
+2026-09-04T16:32:32.202+08:00  cgi   GET    http://10.253.58.186/js/pages/media/rtsp.js                  200
+2026-09-04T16:32:32.202+08:00  cgi   GET    http://10.253.58.186/js/pages/media/osd.js                   200
+2026-09-04T16:32:32.209+08:00  cgi   GET    http://10.253.58.186/js/pages/system/log.js                  200
+2026-09-04T16:32:32.212+08:00  cgi   GET    http://10.253.58.186/js/pages/system/firmware.js             200
+2026-09-04T16:32:32.213+08:00  cgi   GET    http://10.253.58.186/js/pages/system/plugins.js              200
+2026-09-04T16:32:32.221+08:00  cgi   GET    http://10.253.58.186/js/pages/storage/manage.js              200
+2026-09-04T16:32:32.224+08:00  cgi   GET    http://10.253.58.186/js/pages/storage/recording.js           200
+2026-09-04T16:32:32.224+08:00  cgi   GET    http://10.253.58.186/js/pages/storage/snapshot.js            200
+2026-09-04T16:32:32.240+08:00  cgi   GET    http://10.253.58.186/js/pages/storage/playback.js            200
+2026-09-04T16:32:32.244+08:00  cgi   GET    http://10.253.58.186/js/pages/event/rules.js                 200
+2026-09-04T16:32:32.245+08:00  cgi   GET    http://10.253.58.186/js/pages/event/analytics.js             200
+2026-09-04T16:32:32.258+08:00  cgi   GET    http://10.253.58.186/js/pages/media/privacy.js               200
+2026-09-04T16:32:32.261+08:00  cgi   GET    http://10.253.58.186/js/pages/event/log.js                   200
+2026-09-04T16:32:32.261+08:00  cgi   GET    http://10.253.58.186/js/pages/event/motion.js                200
+2026-09-04T16:32:32.272+08:00  cgi   GET    http://10.253.58.186/js/components/toast.js                  200
+2026-09-04T16:32:32.275+08:00  cgi   GET    http://10.253.58.186/js/components/skeleton.js               200
+2026-09-04T16:32:32.276+08:00  cgi   GET    http://10.253.58.186/js/components/modal.js                  200
+2026-09-04T16:32:32.283+08:00  cgi   GET    http://10.253.58.186/js/pages/media/talk.js                  200
+2026-09-04T16:32:32.288+08:00  cgi   GET    http://10.253.58.186/js/pages/media/overlay.js               200
+2026-09-04T16:32:32.288+08:00  cgi   GET    http://10.253.58.186/js/components/schedule-grid.js          200
+2026-09-04T16:32:32.296+08:00  cgi   GET    http://10.253.58.186/js/components/fmt.js                    200
+2026-09-04T16:32:32.305+08:00  cgi   GET    http://10.253.58.186/js/event-catalog.js                     200
+2026-09-04T16:32:32.315+08:00  cgi   GET    http://10.253.58.186/api/v1/auth/status                      200
+2026-09-04T16:32:32.494+08:00  cgi   GET    http://10.253.58.186/assets/unileap_logo_color.png           200
+2026-09-04T16:32:33.094+08:00  cgi   GET    http://10.253.58.186/ws/events                               
+2026-09-04T16:32:39.585+08:00  cgi   POST   http://10.253.58.186/api/v1/auth/login                       200
+2026-09-04T16:32:39.605+08:00  cgi   GET    http://10.253.58.186/                                        200
+2026-09-04T16:32:39.642+08:00  cgi   GET    http://10.253.58.186/css/style.css                           200
+2026-09-04T16:32:39.652+08:00  cgi   GET    http://10.253.58.186/js/app.js                               200
+2026-09-04T16:32:39.652+08:00  cgi   GET    http://10.253.58.186/assets/unileap_logo_color.png           200
+2026-09-04T16:32:39.653+08:00  cgi   GET    http://10.253.58.186/js/vendor/mpegts.js                     200
+2026-09-04T16:32:39.724+08:00  cgi   GET    http://10.253.58.186/js/router.js                            200
+2026-09-04T16:32:39.728+08:00  cgi   GET    http://10.253.58.186/js/components/nav.js                    200
+2026-09-04T16:32:39.729+08:00  cgi   GET    http://10.253.58.186/js/caps.js                              200
+2026-09-04T16:32:39.730+08:00  cgi   GET    http://10.253.58.186/js/api.js                               200
+2026-09-04T16:32:39.731+08:00  cgi   GET    http://10.253.58.186/js/store.js                             200
+2026-09-04T16:32:39.733+08:00  cgi   GET    http://10.253.58.186/js/components/auth-guard.js             200
+2026-09-04T16:32:39.736+08:00  cgi   GET    http://10.253.58.186/js/auth-store.js                        200
+2026-09-04T16:32:39.745+08:00  cgi   GET    http://10.253.58.186/js/components/conn.js                   200
+2026-09-04T16:32:39.749+08:00  cgi   GET    http://10.253.58.186/js/components/dirty.js                  200
+2026-09-04T16:32:39.751+08:00  cgi   GET    http://10.253.58.186/js/components/validate.js               200
+2026-09-04T16:32:39.753+08:00  cgi   GET    http://10.253.58.186/js/components/alerts.js                 200
+2026-09-04T16:32:39.754+08:00  cgi   GET    http://10.253.58.186/js/pages/system/dashboard.js            200
+2026-09-04T16:32:39.755+08:00  cgi   GET    http://10.253.58.186/js/pages/system/info.js                 200
+2026-09-04T16:32:39.759+08:00  cgi   GET    http://10.253.58.186/js/pages/system/maintenance.js          200
+2026-09-04T16:32:39.763+08:00  cgi   GET    http://10.253.58.186/js/pages/system/time.js                 200
+2026-09-04T16:32:39.770+08:00  cgi   GET    http://10.253.58.186/js/pages/system/server.js               200
+2026-09-04T16:32:39.773+08:00  cgi   GET    http://10.253.58.186/js/pages/system/first-login.js          200
+2026-09-04T16:32:39.776+08:00  cgi   GET    http://10.253.58.186/js/pages/network/tcpip.js               200
+2026-09-04T16:32:39.779+08:00  cgi   GET    http://10.253.58.186/js/pages/network/wifi.js                200
+2026-09-04T16:32:39.784+08:00  cgi   GET    http://10.253.58.186/js/pages/system/security.js             200
+2026-09-04T16:32:39.785+08:00  cgi   GET    http://10.253.58.186/js/pages/network/mqtt.js                200
+2026-09-04T16:32:39.791+08:00  cgi   GET    http://10.253.58.186/js/pages/media/live.js                  200
+2026-09-04T16:32:39.796+08:00  cgi   GET    http://10.253.58.186/js/pages/media/video.js                 200
+2026-09-04T16:32:39.800+08:00  cgi   GET    http://10.253.58.186/js/pages/media/image.js                 200
+2026-09-04T16:32:39.806+08:00  cgi   GET    http://10.253.58.186/js/pages/media/audio.js                 200
+2026-09-04T16:32:39.806+08:00  cgi   GET    http://10.253.58.186/js/pages/media/rtsp.js                  200
+2026-09-04T16:32:39.814+08:00  cgi   GET    http://10.253.58.186/js/pages/media/osd.js                   200
+2026-09-04T16:32:39.827+08:00  cgi   GET    http://10.253.58.186/js/pages/system/log.js                  200
+2026-09-04T16:32:39.827+08:00  cgi   GET    http://10.253.58.186/js/pages/system/firmware.js             200
+2026-09-04T16:32:39.829+08:00  cgi   GET    http://10.253.58.186/js/pages/system/plugins.js              200
+2026-09-04T16:32:39.831+08:00  cgi   GET    http://10.253.58.186/js/pages/storage/manage.js              200
+2026-09-04T16:32:39.834+08:00  cgi   GET    http://10.253.58.186/js/pages/storage/recording.js           200
+2026-09-04T16:32:39.834+08:00  cgi   GET    http://10.253.58.186/js/pages/storage/snapshot.js            200
+2026-09-04T16:32:39.847+08:00  cgi   GET    http://10.253.58.186/js/pages/storage/playback.js            200
+2026-09-04T16:32:39.852+08:00  cgi   GET    http://10.253.58.186/js/pages/event/rules.js                 200
+2026-09-04T16:32:39.857+08:00  cgi   GET    http://10.253.58.186/js/pages/event/analytics.js             200
+2026-09-04T16:32:39.860+08:00  cgi   GET    http://10.253.58.186/js/pages/media/privacy.js               200
+2026-09-04T16:32:39.867+08:00  cgi   GET    http://10.253.58.186/js/pages/event/log.js                   200
+2026-09-04T16:32:39.868+08:00  cgi   GET    http://10.253.58.186/js/pages/event/motion.js                200
+2026-09-04T16:32:39.885+08:00  cgi   GET    http://10.253.58.186/js/components/toast.js                  200
+2026-09-04T16:32:39.888+08:00  cgi   GET    http://10.253.58.186/js/components/modal.js                  200
+2026-09-04T16:32:39.891+08:00  cgi   GET    http://10.253.58.186/js/components/skeleton.js               200
+2026-09-04T16:32:39.893+08:00  cgi   GET    http://10.253.58.186/js/pages/media/talk.js                  200
+2026-09-04T16:32:39.895+08:00  cgi   GET    http://10.253.58.186/js/pages/media/overlay.js               200
+2026-09-04T16:32:39.896+08:00  cgi   GET    http://10.253.58.186/js/components/schedule-grid.js          200
+2026-09-04T16:32:39.900+08:00  cgi   GET    http://10.253.58.186/js/components/fmt.js                    200
+2026-09-04T16:32:39.904+08:00  cgi   GET    http://10.253.58.186/js/event-catalog.js                     200
+2026-09-04T16:32:39.925+08:00  cgi   GET    http://10.253.58.186/ws/events                               
+2026-09-04T16:32:39.931+08:00  cgi   GET    http://10.253.58.186/api/v1/auth/status                      200
+2026-09-04T16:32:40.130+08:00  cgi   GET    http://10.253.58.186/api/v1/auth/whoami                      200
+2026-09-04T16:32:40.131+08:00  cgi   GET    http://10.253.58.186/assets/favicon.png                      200
+2026-09-04T16:32:40.146+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:32:40.204+08:00  cgi   GET    http://10.253.58.186/ws/events                               
+2026-09-04T16:32:40.212+08:00  cgi   GET    http://10.253.58.186/api/v1/storage/status                   502
+2026-09-04T16:32:40.212+08:00  cgi   GET    http://10.253.58.186/api/v1/config/ai                        200
+2026-09-04T16:32:40.213+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:32:40.213+08:00  cgi   GET    http://10.253.58.186/api/v1/config/video                     200
+2026-09-04T16:32:41.887+08:00  cgi   GET    http://10.253.58.186/ws/live?stream=0                        
+2026-09-04T16:32:43.536+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:32:43.537+08:00  cgi   GET    http://10.253.58.186/api/v1/system/info                      200
+2026-09-04T16:32:43.539+08:00  cgi   GET    http://10.253.58.186/api/v1/config/general                   200
+2026-09-04T16:32:44.348+08:00  cgi   GET    http://10.253.58.186/api/v1/config/isp                       200
+2026-09-04T16:32:44.348+08:00  cgi   GET    http://10.253.58.186/api/v1/isp/status                       200
+2026-09-04T16:32:44.388+08:00  cgi   GET    http://10.253.58.186/ws/live?stream=1                        
+2026-09-04T16:32:44.859+08:00  cgi   GET    http://10.253.58.186/api/v1/config/video                     200
+2026-09-04T16:32:44.860+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:32:45.310+08:00  cgi   GET    http://10.253.58.186/api/v1/config/audio                     200
+2026-09-04T16:32:45.311+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:32:45.707+08:00  cgi   GET    http://10.253.58.186/api/v1/config/rtsp                      200
+2026-09-04T16:32:45.712+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+2026-09-04T16:32:46.038+08:00  cgi   GET    http://10.253.58.186/api/v1/config/osd                       200
+2026-09-04T16:32:46.496+08:00  cgi   GET    http://10.253.58.186/api/v1/config/isp                       200
+2026-09-04T16:32:46.503+08:00  cgi   GET    http://10.253.58.186/api/v1/isp/status                       200
+2026-09-04T16:32:46.528+08:00  cgi   GET    http://10.253.58.186/ws/live?stream=1                        
+2026-09-04T16:32:46.780+08:00  cgi   GET    http://10.253.58.186/api/v1/config/video                     200
+2026-09-04T16:32:46.795+08:00  cgi   GET    http://10.253.58.186/api/v1/config/platform                  200
+[timed-capture] 90s 到，送出 KeyboardInterrupt
+[camcap] wrote 140 events to first.jsonl
+
+--- first.jsonl ---
+lines: 140
+{"id": 1, "ts": 1788510730.452245, "stream": 1, "proto": "cgi", "dst_ip": "10.253.58.186", "dst_port": 80, "src_port": 10609, "method": "GET", "url": "http://10.253.58.186/api/v1/storage/status", "soap_action": null, "vendor": null, "auth": "none", "req_headers": {"host": "10.253.58.186", "connection": "keep-alive", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36", "accept": "*/*", "referer": "http://10.253.58.186/", "accept-encoding": "gzip, deflate", "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7,zh-CN;q=0.6", "cookie": "opsis_session=4342c0eef5649d3d06abf19d1af7b4ba26676bac8e7cf8e94cebc3cef2d274fe"}, "req_body": "", "resp_status": 502, "resp_headers": {"content-type": "application/json", "content-length": "82", "connection": "close"}, "resp_body": "{\"status\":\"error\",\"error\":{\"code\":\"bad_gateway\",\"message\":\"storaged unavailable\"}}", "latency_ms": 1.9, "bytes_c2s": 0, "bytes_s2c": 0, "note": ""}
+{"id": 2, "ts": 1788510731.4620352, "stream": 2, "proto": "cgi", "dst_ip": "10.253.58.186", "dst_port": 80, "src_port": 10610, "method": "GET", "url": "http://10.253.58.186/ws/events", "soap_action": null, "vendor": null, "auth": "none", "req_headers": {"host": "10.253.58.186", "connection": "Upgrade", "pragma": "no-cache", "cache-control": "no-cache", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36", "upgrade": "websocket", "origin": "http://10.253.58.186", "sec-websocket-version": "13", "accept-encoding": "gzip, deflate", "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7,zh-CN;q=0.6", "cookie": "opsis_session=4342c0eef5649d3d06abf19d1af7b4ba26676bac8e7cf8e94cebc3cef2d274fe", "sec-websocket-key": "KEqH+ltjG1nqDEvFNfPShg==", "sec-websocket-extensions": "permessage-deflate; client_max_window_bits"}, "req_body": "", "resp_status": null, "resp_headers": {}, "resp_body": "", "latency_ms": null, "bytes_c2s": 0, "bytes_s2c": 0, "note": ""}
+{"id": 3, "ts": 1788510731.519699, "stream": 3, "proto": "cgi", "dst_ip": "10.253.58.186", "dst_port": 80, "src_port": 10611, "method": "GET", "url": "http://10.253.58.186/ws/events", "soap_action": null, "vendor": null, "auth": "none", "req_headers": {"host": "10.253.58.186", "connection": "Upgrade", "pragma": "no-cache", "cache-control": "no-cache", "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36", "upgrade": "websocket", "origin": "http://10.253.58.186", "sec-websocket-version": "13", "accept-encoding": "gzip, deflate", "accept-language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7,zh-CN;q=0.6", "cookie": "opsis_session=4342c0eef5649d3d06abf19d1af7b4ba26676bac8e7cf8e94cebc3cef2d274fe", "sec-websocket-key": "j0+HQFYfmdbkuOzMYzNDog==", "sec-websocket-extensions": "permessage-deflate; client_max_window_bits"}, "req_body": "", "resp_status": null, "resp_headers": {}, "resp_body": "", "latency_ms": null, "bytes_c2s": 0, "bytes_s2c": 0, "note": ""}
+
+--- netstat / 10.253.58.186 ---
+
+  TCP    10.253.58.14:10616     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10618     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10622     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10627     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10628     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10631     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10634     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10637     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10643     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10646     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10655     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10660     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10662     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10668     10.253.58.186:80       FIN_WAIT_2      19476
+  TCP    10.253.58.14:10673     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10675     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10676     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10684     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10685     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10692     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10693     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10702     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10703     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10704     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10715     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:10722     10.253.58.186:80       FIN_WAIT_2      19476
+  TCP    10.253.58.14:40057     10.253.58.186:80       TIME_WAIT       0
+  TCP    10.253.58.14:40111     10.253.58.186:80       TIME_WAIT       0
+
+--- sc query WinDivert ---
+
+SERVICE_NAME: WinDivert 
+        TYPE               : 1  KERNEL_DRIVER  
+        STATE              : 4  RUNNING 
+                                (STOPPABLE, NOT_PAUSABLE, IGNORES_SHUTDOWN)
+        WIN32_EXIT_CODE    : 0  (0x0)
+        SERVICE_EXIT_CODE  : 0  (0x0)
+        CHECKPOINT         : 0x0
+        WAIT_HINT          : 0x0
+
+

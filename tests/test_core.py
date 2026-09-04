@@ -192,3 +192,41 @@ def test_jsonl_roundtrip_survives_unicode_line_separators():
     st.add(e)
     back = LogStore.from_jsonl(st.to_jsonl())
     assert len(back) == 1 and back.all()[0].resp_body == e.resp_body
+
+
+def test_windivert_filter_avoids_unsupported_not_over_parens():
+    """WinDivert 的 filter 語言只允許 `not` 套在單一 test 上，不能套在括號子
+    運算式；`not (a and b)` 會讓 WinDivertOpen 回 ERROR_INVALID_PARAMETER (87)。
+    這條測試釘住 De Morgan 展開後的形式，避免回歸。"""
+    from camcap.redirector import Redirector
+
+    r = Redirector("10.253.58.186", "10.253.58.14", 10222, None, (40000, 41000))
+    flt = r.filter
+    assert "not" not in flt
+    assert "!" not in flt
+    assert "tcp.SrcPort < 40000 or tcp.SrcPort >= 41000" in flt
+    assert "ip.DstAddr == 10.253.58.186" in flt
+    assert "ip.SrcAddr == 10.253.58.14 and tcp.SrcPort == 10222" in flt
+
+
+def test_redaction_covers_json_login_form_and_cookies():
+    """Found on the Windows run: the board's Web UI logs in with a JSON body and a
+    cookie session, neither of which the first redaction pass touched."""
+    from camcap.model import Event
+    e = Event(id=1, ts=1.0, stream=1, proto="cgi", dst_ip="1.2.3.4", dst_port=80, src_port=5,
+              method="POST", url="http://1.2.3.4/api/v1/auth/login?password=x",
+              req_headers={"cookie": "opsis_session=abc123; theme=dark", "content-type": "application/json"},
+              req_body='{"username":"admin","password":"admin","remember":true}',
+              resp_status=200,
+              resp_headers={"set-cookie": "opsis_session=f78591ad00; Path=/; HttpOnly", "content-type": "application/json"},
+              resp_body='{"status":"ok","token":"eyJhbGciOi","user":"admin"}')
+    r = redact_event(e)
+    assert '"password":"<redacted>"' in r.req_body and '"username":"admin"' in r.req_body
+    assert r.req_headers["cookie"] == "<redacted>"
+    assert r.resp_headers["set-cookie"] == "<redacted>"
+    assert '"token":"<redacted>"' in r.resp_body and '"user":"admin"' in r.resp_body
+    assert "password=<redacted>" in r.url
+    # form-encoded body, password at the very start
+    e2 = Event(id=2, ts=1.0, stream=1, proto="cgi", dst_ip="1.2.3.4", dst_port=80, src_port=5,
+               req_body="password=s3cret&user=admin", url="http://1.2.3.4/login")
+    assert redact_event(e2).req_body == "password=<redacted>&user=admin"

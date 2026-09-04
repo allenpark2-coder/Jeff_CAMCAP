@@ -1,0 +1,36 @@
+﻿=== camcap Windows verify part 1 (no admin) 2026-09-04 16:29:57 ===
+root: C:\Users\allen\camcap
+
+--- python -m pytest -q ---
+.........                                                                [100%]
+9 passed in 4.45s
+
+--- python tools\diag-windivert.py --cam 10.253.58.186 ---
+python      : 3.12.10 64bit (C:\Users\allen\camcap\.venv\Scripts\python.exe)
+pydivert    : 3.1.3
+WinDivert64.dll: OK C:\Users\allen\camcap\.venv\Lib\site-packages\pydivert\windivert_dll\WinDivert64.dll (47616 bytes)
+WinDivert64.sys: OK C:\Users\allen\camcap\.venv\Lib\site-packages\pydivert\windivert_dll\WinDivert64.sys (94144 bytes)
+local ip    : 10.253.58.14  (route to 10.253.58.186)
+
+--- WinDivertHelperCompileFilter (no driver, no admin) ---
+[ OK ] true
+[ OK ] outbound and tcp
+[ OK ] bare ip
+[ OK ] dst addr
+[ OK ] >= only
+[ OK ] not <test>
+[FAIL] not (a and b)  <-- 舊寫法的可疑點: offset 4: Filter expression parse error
+       not (tcp.SrcPort >= 40000 and tcp.SrcPort < 41000)
+           ^
+[FAIL] !(a and b): offset 1: Filter expression parse error
+       !(tcp.SrcPort >= 40000 and tcp.SrcPort < 41000)
+        ^
+[ OK ] De Morgan 展開
+[ OK ] WSD sniffer filter
+[FAIL] OLD 完整 filter: offset 66: Filter expression parse error
+       outbound and ip and tcp and ((ip.DstAddr == 10.253.58.186 and not (tcp.SrcPort >= 40000 and tcp.SrcPort < 41000)) or (ip.SrcAddr == 10.253.58.14 and tcp.SrcPort == 10222))
+                                                                         ^
+[ OK ] NEW 完整 filter
+
+3 failure(s) total, 0 of them on filters camcap actually uses.
+（ladder 中間那幾條本來就是拿來確認語法邊界的，FAIL 是預期內的資訊。）

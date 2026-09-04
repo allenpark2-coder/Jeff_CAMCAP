@@ -62,8 +62,29 @@ camcap                                 # UI
 .\tools\build.ps1                      # PyInstaller onedir
 ```
 
+## 2026-09-04 Windows 真機結果（同一塊 CV75 devkit，WinDivert 真攔截）
+
+- **`WinError 87` 的病因是 filter 語法**：WinDivert 的 `not` 只能套在單一 test 上，
+  不能套括號子運算式。`not (A and B)` 改成 De Morgan 展開的 `(¬A or ¬B)` 就通了。
+  細節與證據見 `docs/windows-debug-log.md`。
+- 瀏覽器直連 `http://<cam>/` 的流量 90 秒抓到 **140 筆**，全部正確解出；
+  `sc query WinDivert` = RUNNING。遮罩後樣本：`docs/samples/cv75-devkit-windivert-2026-09-04.jsonl`。
+- 這塊板子的 Web UI 走 **cookie session（`POST /api/v1/auth/login`）不是 Digest**，
+  所以 replay 的 re-auth 路徑這次沒被用到；cookie 重播尚未驗證。
+- httpd 對每個 request 都回 `Connection: close`（即使 client 要 keep-alive），
+  首頁一次載入開了 140 條 TCP 連線 —— firmware 面的效能議題，跟「Digest nonce 可重用」一起議。
+
+驗證腳本（輸出寫成 `docs/windows-verify-{1,2}.txt`）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\verify-windows.ps1          # 不需 admin
+powershell -ExecutionPolicy Bypass -File tools\verify-windows.ps1 -Live    # 需系統管理員
+```
+
 ### 尚未實機驗證（Windows 端）
-1. pydivert 3.x 的 Packet 屬性（`src_addr/dst_port` 可寫）與 `Flag.SNIFF` 名稱。
-2. 改寫 dst 到網卡 IP 再注入，client 是否正確收到回應（mitmproxy 舊版 windows.py 的做法）。
+1. ~~pydivert 3.x 的 Packet 屬性與 `Flag.SNIFF` 名稱~~ → 3.1.3 與 2.x 介面一致，已驗。
+2. ~~改寫 dst 到網卡 IP 再注入，client 是否正確收到回應~~ → 已驗，瀏覽器正常收到回應。
 3. PyInstaller onefile 內含 WinDivert `.sys` 從 temp 目錄載入是否被擋；不行就用 onedir。
 4. pywebview 在 Windows 使用 EdgeChromium (WebView2) runtime，目標機需已安裝。
+5. ~~`redact_event()` 不會遮 JSON 登入 body~~ → 已補：JSON/form 的 password/token 類 key、Cookie/Set-Cookie、session token 一律遮（`test_redaction_covers_json_login_form_and_cookies`）。
+6. WebSocket（`/ws/events`）升級後的 frame 沒解析。

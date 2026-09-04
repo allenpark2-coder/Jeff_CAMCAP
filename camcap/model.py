@@ -209,8 +209,14 @@ def to_har_dict(events: Iterable[Event]) -> dict:
 
 _RE_DIGEST_RESP = re.compile(r'(response=")[0-9a-fA-F]+(")')
 _RE_WSSE_PW = re.compile(r'(<(?:[\w.-]+:)?Password\b[^>]*>)[^<]*(</(?:[\w.-]+:)?Password>)', re.S)
-_RE_URL_PW = re.compile(r'([?&](?:password|pwd|pass|passwd)=)[^&#]*', re.I)
+_RE_URL_PW = re.compile(r'((?:^|[?&])(?:password|pwd|pass|passwd)=)[^&#\s]*', re.I | re.M)
 _RE_RTSP_URL_CRED = re.compile(r'(rtsp://[^:/@\s]+:)[^@\s]+@')
+# JSON bodies such as {"username":"admin","password":"admin"} or {"token":"..."}
+_RE_JSON_SECRET = re.compile(
+    r'("(?:password|passwd|pwd|pass|old_password|new_password|secret|token|access_token|api_key|apikey|session)"\s*:\s*")[^"]*(")',
+    re.I)
+# cookie-ish session tokens anywhere (Set-Cookie, Cookie, bodies): name contains "session" or "sid"
+_RE_SESSION_TOKEN = re.compile(r'([A-Za-z0-9_.-]*(?:session|sessid|sid|token)[A-Za-z0-9_.-]*=)[^;,&\s"]+', re.I)
 
 REDACTED = "<redacted>"
 
@@ -220,6 +226,8 @@ def redact_text(s: str) -> str:
     s = _RE_WSSE_PW.sub(r"\1" + REDACTED + r"\2", s)
     s = _RE_URL_PW.sub(r"\1" + REDACTED, s)
     s = _RE_RTSP_URL_CRED.sub(r"\1" + REDACTED + "@", s)
+    s = _RE_JSON_SECRET.sub(r"\1" + REDACTED + r"\2", s)
+    s = _RE_SESSION_TOKEN.sub(r"\1" + REDACTED, s)
     return s
 
 
@@ -236,6 +244,11 @@ def redact_event(e: Event) -> Event:
         elif k.lower() in ("cookie", "x-auth-token", "proxy-authorization"):
             hdrs[k] = REDACTED
     d["req_headers"] = hdrs
+    rh = dict(d["resp_headers"])
+    for k in list(rh):
+        if k.lower() in ("set-cookie", "x-auth-token", "authorization", "www-authenticate"):
+            rh[k] = redact_text(rh[k]) if k.lower() == "www-authenticate" else REDACTED
+    d["resp_headers"] = rh
     d["req_body"] = redact_text(d["req_body"])
     d["resp_body"] = redact_text(d["resp_body"])
     if d["url"]:
