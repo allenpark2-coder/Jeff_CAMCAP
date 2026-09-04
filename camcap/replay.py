@@ -1,5 +1,12 @@
 """Replay a captured log against a camera (the same one or another IP).
 
+Cookie sessions (e.g. `POST /api/v1/auth/login` + `Cookie: opsis_session=...`):
+the replayer keeps its own cookie jar. When credentials are given, JSON /
+form login bodies get the supplied username/password substituted (so a
+redacted log with `"password":"<redacted>"` is still replayable), and captured
+`Cookie` headers are dropped once the jar holds a cookie for the target — the
+freshly issued session is used instead of the stale captured one.
+
 Auth strategy per request (auth_mode="auto"):
   1. raw     — send exactly what was captured. Works on cameras without
                nonce caching / replay protection.
@@ -13,6 +20,7 @@ A result is "ok" when the replayed status equals the captured one.
 """
 from __future__ import annotations
 
+import json
 import re
 import threading
 import time
@@ -24,13 +32,43 @@ import requests
 from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
 from . import wsse
-from .model import PROTO_CGI, PROTO_ONVIF, Event
+from .model import PROTO_CGI, PROTO_ONVIF, Event, _is_secret_key
 
 HOP_BY_HOP = {"host", "content-length", "transfer-encoding", "connection", "keep-alive",
               "proxy-authenticate", "proxy-authorization", "te", "trailer", "upgrade",
               "accept-encoding"}
 
 _NOT_AUTH = re.compile(r"NotAuthorized|FailedAuthentication|not\s+authorized", re.I)
+_USER_KEYS = ("username", "user", "login", "account", "name")
+_PW_PARTS = ("password", "passwd", "pwd")
+_RE_FORM_USER = re.compile(r"(\b(?:username|user|login|account)=)[^&\s]*", re.I)
+_RE_FORM_PW = re.compile(r"(\b(?:password|passwd|pwd|pass)=)[^&\s]*", re.I)
+
+
+def substitute_credentials(body: str, username: str, password: str) -> str:
+    """Put the operator's credentials into a login body (JSON or form-encoded).
+    Only keys that look like user / password are touched; anything else is kept."""
+    stripped = body.strip()
+    if stripped[:1] == "{":
+        try:
+            obj = json.loads(stripped)
+        except ValueError:
+            obj = None
+        if isinstance(obj, dict):
+            changed = False
+            for k in list(obj):
+                lk = k.replace("-", "").replace("_", "").lower()
+                if any(p in lk for p in _PW_PARTS) and isinstance(obj[k], str):
+                    obj[k] = password
+                    changed = True
+                elif lk in _USER_KEYS and isinstance(obj[k], str):
+                    obj[k] = username
+                    changed = True
+            return json.dumps(obj, ensure_ascii=False, separators=(",", ":")) if changed else body
+    if "=" in body and "\n" not in body and _RE_FORM_PW.search(body):
+        body = _RE_FORM_PW.sub(lambda m: m.group(1) + password, body)
+        body = _RE_FORM_USER.sub(lambda m: m.group(1) + username, body)
+    return body
 
 
 @dataclass
@@ -65,8 +103,10 @@ class Replayer:
         self.events = [e for e in sorted(events, key=lambda e: (e.ts, e.id))]
         self.opts = opts
         self.cancel = threading.Event()
-        self.session = requests.Session()
+        self.session = requests.Session()          # carries cookies obtained during replay
         self.session.verify = opts.verify_tls
+        self.bare = requests.Session()             # for requests that were captured without any cookie
+        self.bare.verify = opts.verify_tls
         self._clock_offset: Optional[float] = None
         self.results: list[ReplayResult] = []
 
@@ -84,14 +124,26 @@ class Replayer:
 
     def _headers(self, ev: Event, keep_auth: bool) -> dict:
         out = {}
+        have_jar = len(self.session.cookies) > 0
         for k, v in ev.req_headers.items():
             lk = k.lower()
             if lk in HOP_BY_HOP:
                 continue
             if lk == "authorization" and not keep_auth:
                 continue
+            if lk == "cookie" and have_jar:
+                continue  # use the session we obtained during this replay, not the stale capture
             out[k] = v
         return out
+
+    def _body_for(self, ev: Event) -> Optional[bytes]:
+        if not ev.req_body:
+            return None
+        body = ev.req_body
+        o = self.opts
+        if o.username and o.password and ev.proto == PROTO_CGI and (ev.method or "").upper() in ("POST", "PUT"):
+            body = substitute_credentials(body, o.username, o.password)
+        return body.encode("utf-8")
 
     def _clock_offset_for(self, url: str) -> float:
         if self._clock_offset is None:
@@ -106,10 +158,21 @@ class Replayer:
             return True
         return proto == PROTO_ONVIF and status >= 400 and bool(_NOT_AUTH.search(body or ""))
 
+    def _client(self, ev: Event) -> requests.Session:
+        """Requests captured with a Cookie, or whose response set one (login), go
+        through the cookie-carrying session; everything else is sent bare so an
+        originally unauthenticated request stays unauthenticated on replay."""
+        req_has = any(k.lower() == "cookie" for k in ev.req_headers)
+        resp_sets = any(k.lower() == "set-cookie" for k in ev.resp_headers)
+        return self.session if (req_has or resp_sets) else self.bare
+
     def _send(self, ev: Event, url: str, headers: dict, body: Optional[bytes], auth=None):
+        client = self._client(ev)
         t = time.perf_counter()
-        r = self.session.request(ev.method or "GET", url, headers=headers, data=body, auth=auth,
-                                 timeout=self.opts.timeout, allow_redirects=False)
+        r = client.request(ev.method or "GET", url, headers=headers, data=body, auth=auth,
+                           timeout=self.opts.timeout, allow_redirects=False)
+        if client is self.bare:
+            self.bare.cookies.clear()
         return r, (time.perf_counter() - t) * 1000
 
     # -- main ----------------------------------------------------------------
@@ -138,7 +201,7 @@ class Replayer:
             return ReplayResult(ev.id, label, ev.resp_status, None, True, skipped=True,
                                 error="binary request body not captured")
         url = self._rewrite_url(ev)
-        body = ev.req_body.encode("utf-8") if ev.req_body else None
+        body = self._body_for(ev)
         o = self.opts
         try:
             # 1) raw

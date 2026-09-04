@@ -16,6 +16,7 @@ PROTO_CGI = "cgi"
 PROTO_RTSP = "rtsp"
 PROTO_RAW = "raw"
 PROTO_WSD = "wsd"  # WS-Discovery over UDP 3702
+PROTO_TLS = "tls"  # encrypted (HTTPS / RTSPS); labelled only, never decrypted
 
 
 @dataclass
@@ -69,6 +70,8 @@ class Event:
             return self.url or "?"
         if self.proto == PROTO_WSD:
             return self.soap_action or "WS-Discovery"
+        if self.proto == PROTO_TLS:
+            return f"{self.method or 'TLS'} :{self.dst_port} {self.url or '(no SNI)'} {self.bytes_c2s}B→ ←{self.bytes_s2c}B"
         return f"tcp/{self.dst_port} {self.bytes_c2s}B→ ←{self.bytes_s2c}B"
 
 

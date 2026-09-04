@@ -19,7 +19,7 @@ from typing import Callable, Optional
 
 import h11
 
-from .model import (BODY_CAP, PROTO_CGI, PROTO_ONVIF, PROTO_RAW, PROTO_RTSP, Event,
+from .model import (BODY_CAP, PROTO_CGI, PROTO_ONVIF, PROTO_RAW, PROTO_RTSP, PROTO_TLS, Event,
                     LogStore)
 
 _HTTP_REQ = re.compile(rb"^[A-Z]{3,10} \S+ HTTP/1\.[01]\r\n")
@@ -85,6 +85,35 @@ def body_to_text(headers: dict, data: bytes) -> str:
     return data.decode("utf-8", "replace")
 
 
+def tls_client_hello_sni(data: bytes):
+    """Return (version_str, sni or None) if `data` starts with a TLS ClientHello,
+    else None. Needs the whole ClientHello; callers may retry with more bytes."""
+    if len(data) < 6 or data[0] != 0x16 or data[1] != 0x03 or data[5] != 0x01:
+        return None
+    rec_len = int.from_bytes(data[3:5], "big")
+    if len(data) < 5 + rec_len:
+        raise ValueError("incomplete")
+    p = 9  # record(5) + handshake type(1) + length(3)
+    ver = {0x0301: "TLS1.0", 0x0302: "TLS1.1", 0x0303: "TLS1.2/1.3"}.get(int.from_bytes(data[p:p + 2], "big"), "TLS")
+    p += 2 + 32                                   # version + random
+    p += 1 + data[p]                              # session id
+    p += 2 + int.from_bytes(data[p:p + 2], "big")  # cipher suites
+    p += 1 + data[p]                              # compression methods
+    if p + 2 > len(data):
+        return ver, None
+    ext_end = p + 2 + int.from_bytes(data[p:p + 2], "big")
+    p += 2
+    while p + 4 <= min(ext_end, len(data)):
+        etype = int.from_bytes(data[p:p + 2], "big")
+        elen = int.from_bytes(data[p + 2:p + 4], "big")
+        body = data[p + 4:p + 4 + elen]
+        if etype == 0 and len(body) >= 5:         # server_name
+            name_len = int.from_bytes(body[3:5], "big")
+            return ver, body[5:5 + name_len].decode("ascii", "replace")
+        p += 4 + elen
+    return ver, None
+
+
 def _hdict(headers) -> dict:
     """h11 headers (list of (bytes, bytes)) → lower-cased str dict (last wins)."""
     out = {}
@@ -128,8 +157,9 @@ class StreamDecoder:
         self._rtsp_c = bytearray()
         self._rtsp_s = bytearray()
         self._rtsp_await: deque[_Pending] = deque()
-        # raw
+        # raw / tls
         self._raw_event: Optional[Event] = None
+        self._tls_buf: Optional[bytearray] = None
 
     # -- public --------------------------------------------------------------
     def feed_c2s(self, data: bytes) -> None:
@@ -146,6 +176,8 @@ class StreamDecoder:
         elif self.kind == "rtsp":
             self._rtsp_c += data
             self._rtsp_parse()
+        elif self.kind == "tls":
+            self._tls_feed(data)
         else:
             self._raw_touch()
 
@@ -196,6 +228,9 @@ class StreamDecoder:
             self._sconn = h11.Connection(our_role=h11.CLIENT)
         elif _RTSP_REQ.match(head):
             self.kind = "rtsp"
+        elif len(head) >= 6 and head[0] == 0x16 and head[1] == 0x03 and head[5] == 0x01:
+            self.kind = "tls"
+            self._tls_buf = bytearray()
         else:
             self.kind = "raw"
 
@@ -211,6 +246,31 @@ class StreamDecoder:
             self._raw_event = self.store.add(ev)
         self._raw_event.bytes_c2s = self.bytes_c2s
         self._raw_event.bytes_s2c = self.bytes_s2c
+
+    # -- tls (encrypted: we only label it, never decrypt) ----------------------
+    def _tls_feed(self, data: bytes) -> None:
+        if self._raw_event is None:
+            ev = self._new_event(PROTO_TLS)
+            ev.note = "TLS (encrypted; camcap does not decrypt)"
+            self._raw_event = self.store.add(ev)
+        self._raw_event.bytes_c2s = self.bytes_c2s
+        self._raw_event.bytes_s2c = self.bytes_s2c
+        if self._tls_buf is None:
+            return
+        self._tls_buf += data
+        try:
+            res = tls_client_hello_sni(bytes(self._tls_buf))
+        except ValueError:
+            if len(self._tls_buf) > 16384:
+                self._tls_buf = None
+            return  # need more bytes
+        self._tls_buf = None
+        if res:
+            ver, sni = res
+            self._raw_event.method = ver
+            self._raw_event.url = f"https://{sni}:{self.dst_port}" if sni else None
+            self._raw_event.note = f"{ver} ClientHello" + (f", SNI={sni}" if sni else ", no SNI") + \
+                " — encrypted; switch the camera to HTTP or use a TLS-aware tool"
 
     def _degrade_to_raw(self, why: str) -> None:
         self.kind = "raw"

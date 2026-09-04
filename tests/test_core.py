@@ -257,3 +257,63 @@ def test_redaction_covers_cookies_and_response_headers():
     assert '"token":"<redacted>"' in r.resp_body and '"user":"admin"' in r.resp_body
     assert "password=<redacted>" in r.url
     assert redact_text("ok opsis_session=deadbeef; x=1") == "ok opsis_session=<redacted>; x=1"
+
+
+def test_tls_client_hello_is_labelled_not_mistaken_for_vendor_protocol():
+    """Windows debug-log open issue 9: HTTPS/RTSPS fell into `raw` with a
+    'vendor SDK protocol?' note. Now it is tagged tls with version + SNI."""
+    import ssl
+    from camcap.decoders import StreamDecoder, tls_client_hello_sni
+    # build a real ClientHello with SNI using the ssl module (no network)
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    inb, outb = ssl.MemoryBIO(), ssl.MemoryBIO()
+    obj = ctx.wrap_bio(inb, outb, server_side=False, server_hostname="cam.example.local")
+    try:
+        obj.do_handshake()
+    except ssl.SSLWantReadError:
+        pass
+    hello = outb.read()
+    assert hello[:2] == b"\x16\x03"
+    ver, sni = tls_client_hello_sni(hello)
+    assert sni == "cam.example.local" and ver.startswith("TLS")
+    st = LogStore()
+    d = StreamDecoder(st, 1, "1.2.3.4", 443, 5)
+    # feed in two fragments to exercise the "need more bytes" path
+    d.feed_c2s(hello[:40])
+    d.feed_c2s(hello[40:])
+    d.feed_s2c(b"\x16\x03\x03\x00\x05hello")
+    d.close()
+    evs = st.all()
+    assert len(evs) == 1 and evs[0].proto == "tls"
+    assert "SNI=cam.example.local" in evs[0].note and "vendor" not in evs[0].note
+    assert evs[0].url == "https://cam.example.local:443"
+    assert evs[0].bytes_c2s == len(hello) and evs[0].bytes_s2c == 10
+
+
+def test_replay_cookie_session_login_flow_even_from_redacted_log(capture, cam):
+    """CV75 devkit Web UI: POST /api/v1/auth/login (JSON) → Set-Cookie → API calls with Cookie.
+    A redacted log has "<redacted>" as password and a stale cookie; with --user/--password
+    the replayer must log in again and carry the new cookie."""
+    from camcap.replay import substitute_credentials
+    sess, store, relay_url = capture
+    s = requests.Session()
+    r = s.post(relay_url + "/api/v1/auth/login", json={"username": "admin", "password": "secret"})
+    assert r.status_code == 200 and "fc_session" in r.headers.get("set-cookie", "")
+    assert s.get(relay_url + "/api/v1/auth/whoami").status_code == 200
+    assert requests.get(relay_url + "/api/v1/auth/whoami").status_code == 401  # no cookie → 401
+    evs = _wait(store, 3)
+    assert [e.resp_status for e in evs] == [200, 200, 401]
+    redacted = [redact_event(e) for e in evs]
+    assert '"password":"<redacted>"' in redacted[0].req_body
+    assert redacted[1].req_headers["cookie"] == "<redacted>"
+    opts = ReplayOptions(target_ip="127.0.0.1", port_map={sess.relay_port: cam.port},
+                         username="admin", password="secret", speed=0)
+    res = list(Replayer(redacted, opts).run())
+    assert [(r.orig_status, r.status, r.ok) for r in res] == [(200, 200, True), (200, 200, True), (401, 401, True)]
+    # without credentials the redacted login fails and the stale cookie is rejected
+    res2 = list(Replayer(redacted, ReplayOptions(target_ip="127.0.0.1", port_map={sess.relay_port: cam.port}, speed=0)).run())
+    assert [r.ok for r in res2] == [False, False, True]
+    assert substitute_credentials("user=x&password=y", "admin", "pw") == "user=admin&password=pw"
+    assert substitute_credentials('{"a":1}', "admin", "pw") == '{"a":1}'

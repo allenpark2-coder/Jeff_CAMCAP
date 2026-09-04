@@ -22,7 +22,7 @@
   tr:hover { background:#f3f6fb; }
   td.url { max-width:520px; overflow:hidden; text-overflow:ellipsis; }
   .tag { display:inline-block; padding:0 6px; border-radius:3px; font-size:11px; color:#fff; }
-  .tag.onvif { background:#7c3aed; } .tag.cgi { background:#0891b2; } .tag.rtsp { background:#059669; } .tag.raw { background:#6b7280; } .tag.wsd { background:#d97706; }
+  .tag.onvif { background:#7c3aed; } .tag.cgi { background:#0891b2; } .tag.rtsp { background:#059669; } .tag.raw { background:#6b7280; } .tag.tls { background:#b91c1c; } .tag.wsd { background:#d97706; }
   .st-2 { color:var(--ok); } .st-4, .st-5 { color:var(--bad); } .st-3 { color:var(--warn); }
   #detail { padding:10px; font-family: ui-monospace, Consolas, monospace; font-size:12px; white-space:pre-wrap; word-break:break-all; }
   #detail h4 { margin:8px 0 4px; font-family: system-ui; color:var(--mut); }
@@ -60,7 +60,7 @@
   <section id="replay">
     <div class="row">
       <strong>Replay</strong>
-      <input id="rTarget" placeholder="target IP（空＝原 camera）">
+      <input id="rTarget" placeholder="target IP（空＝原 camera）" style="width:190px">
       <input id="rPortMap" placeholder="port map 80:8080" style="width:120px">
       <input id="rUser" placeholder="username">
       <input id="rPass" type="password" placeholder="password">

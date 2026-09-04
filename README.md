@@ -98,7 +98,7 @@ powershell -ExecutionPolicy Bypass -File tools\verify-windows.ps1 -Smoke    # �
    onefile（`.sys` 先解到 `%TEMP%`）刻意沒試，onedir 夠用就不冒那個險。
 4. ~~pywebview / WebView2~~ → 已驗（2026-09-04，打包後的 exe）：UI 開得起來、事件列表與明細正常、「下載前遮罩密碼」預設勾選。
 5. ~~`redact_event()` 不會遮 JSON 登入 body~~ → 已修（`redact_json()` + form-urlencoded）。
-6. WebSocket（`/ws/events`）升級後的 frame 沒解析。
-9. **HTTPS / RTSPS 看不到內容** —— TLS 流量掉進 `raw`，只有 byte 計數；camcap 不做 MITM。而且 note 目前寫「vendor SDK protocol?」會被誤讀成私有協定。最小修法（解 ClientHello 標示 SNI）與 MITM 的取捨見 `docs/windows-debug-log.md` 未解問題 9。
-7. cookie session 的重播沒驗過（Digest 重播已驗）。
+6. WebSocket（`/ws/events`）升級後的 frame 沒解析；重播時這類請求會變成普通 GET 拿 404，列為 mismatch 屬預期。
+9. **HTTPS / RTSPS 看不到內容**（camcap 不做 MITM）→ 2026-09-04 已做「標示清楚」版：TLS ClientHello 自成一類 `tls`，帶版本與 SNI，note 明講是加密流量、請把 camera 切回 HTTP。MITM 的取捨見 `docs/windows-debug-log.md` 未解問題 9，暫不做。
+7. ~~cookie session 的重播沒驗過~~ → 已做並在真板驗過：有帳密時把帳密代入 JSON/form 登入 body（遮罩過的 log 也能重播）、重播用自己的 cookie jar、原本沒帶 cookie 的請求維持不帶。Windows 抓的 140 筆遮罩 log 從 Linux 重播 132/140 一致，其餘 8 筆是 WebSocket。
 8. 還沒在任何一台 DQA 機器上試裝 —— 防毒誤判、HVCI / driver blocklist 在開發機上測不出來。

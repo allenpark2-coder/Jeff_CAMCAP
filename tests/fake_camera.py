@@ -43,6 +43,7 @@ class FakeCamera:
         self.live_nonces: set[str] = set()
         self.used_nonces: set[str] = set()
         self.used_wsse_nonces: set[str] = set()
+        self.sessions: set[str] = set()
         self.requests: list[tuple] = []
         self._lock = threading.Lock()
         cam = self
@@ -92,8 +93,18 @@ class FakeCamera:
                         cam.used_nonces.add(nonce)  # single-use → replay protection
                 return ok
 
+            def _session_ok(self) -> bool:
+                c = self.headers.get("Cookie", "")
+                m = re.search(r"fc_session=([0-9a-f]+)", c)
+                with cam._lock:
+                    return bool(m) and m.group(1) in cam.sessions
+
             def do_GET(self):
                 cam.requests.append(("GET", self.path, None))
+                if self.path.startswith("/api/v1/"):
+                    if not self._session_ok():
+                        return self._send(401, b'{"status":"error","code":"unauthorized"}', "application/json")
+                    return self._send(200, b'{"status":"ok","data":{"user":"admin"}}', "application/json")
                 if self.path.startswith("/cgi-bin/"):
                     if not self._digest_ok():
                         return self._challenge()
@@ -107,6 +118,20 @@ class FakeCamera:
                 body = self.rfile.read(n).decode("utf-8", "replace")
                 if self.path.startswith("/onvif/"):
                     return self._onvif(body)
+                if self.path == "/api/v1/auth/login":
+                    cam.requests.append(("POST", self.path, None))
+                    import json as _json
+                    try:
+                        j = _json.loads(body)
+                    except ValueError:
+                        j = {}
+                    if j.get("username") == cam.username and j.get("password") == cam.password:
+                        tok = os.urandom(16).hex()
+                        with cam._lock:
+                            cam.sessions.add(tok)
+                        return self._send(200, b'{"status":"ok"}', "application/json",
+                                          extra={"Set-Cookie": f"fc_session={tok}; Path=/; HttpOnly"})
+                    return self._send(401, b'{"status":"error","code":"bad_credentials"}', "application/json")
                 if self.path.startswith("/cgi-bin/"):
                     cam.requests.append(("POST", self.path, None))
                     if not self._digest_ok():
