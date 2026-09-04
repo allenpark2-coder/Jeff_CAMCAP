@@ -1,0 +1,36 @@
+[project]
+name = "camcap"
+version = "0.1.0"
+description = "Intercept, log and replay CGI/ONVIF commands sent to an IP camera (Windows, WinDivert-based)"
+requires-python = ">=3.10"
+dependencies = [
+    "h11>=0.14",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# Only needed on the Windows machine that actually intercepts / shows the UI.
+windows = [
+    "pydivert>=3.1",
+    "pywebview>=5",
+    "pyinstaller>=6",
+]
+dev = [
+    "pytest>=8",
+]
+
+[project.scripts]
+camcap = "camcap.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["camcap*"]
+
+[tool.setuptools.package-data]
+camcap = ["ui/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<title>camcap</title>
+<style>
+  :root { --bg:#f6f7f9; --fg:#1d2024; --mut:#6b7280; --line:#d9dde3; --acc:#2563eb; --bad:#dc2626; --ok:#16a34a; --warn:#d97706; }
+  * { box-sizing: border-box; }
+  body { margin:0; font: 13px/1.4 system-ui, "Segoe UI", sans-serif; background:var(--bg); color:var(--fg); display:flex; flex-direction:column; height:100vh; }
+  header { display:flex; gap:8px; align-items:center; padding:8px 12px; border-bottom:1px solid var(--line); background:#fff; flex-wrap:wrap; }
+  header input[type=text], header input[type=number], header input[type=password] { padding:5px 8px; border:1px solid var(--line); border-radius:4px; }
+  button { padding:5px 10px; border:1px solid var(--line); border-radius:4px; background:#fff; cursor:pointer; }
+  button.primary { background:var(--acc); color:#fff; border-color:var(--acc); }
+  button:disabled { opacity:.5; cursor:default; }
+  #status { color:var(--mut); margin-left:auto; white-space:nowrap; }
+  main { flex:1; display:grid; grid-template-columns: 1fr 420px; grid-template-rows: 1fr 240px; gap:1px; min-height:0; background:var(--line); }
+  section { background:#fff; overflow:auto; min-height:0; }
+  table { border-collapse:collapse; width:100%; font-variant-numeric: tabular-nums; }
+  th, td { text-align:left; padding:3px 8px; border-bottom:1px solid #eef0f3; white-space:nowrap; }
+  th { position:sticky; top:0; background:#fafbfc; color:var(--mut); font-weight:600; }
+  tr.sel { background:#e8efff; }
+  tr:hover { background:#f3f6fb; }
+  td.url { max-width:520px; overflow:hidden; text-overflow:ellipsis; }
+  .tag { display:inline-block; padding:0 6px; border-radius:3px; font-size:11px; color:#fff; }
+  .tag.onvif { background:#7c3aed; } .tag.cgi { background:#0891b2; } .tag.rtsp { background:#059669; } .tag.raw { background:#6b7280; } .tag.wsd { background:#d97706; }
+  .st-2 { color:var(--ok); } .st-4, .st-5 { color:var(--bad); } .st-3 { color:var(--warn); }
+  #detail { padding:10px; font-family: ui-monospace, Consolas, monospace; font-size:12px; white-space:pre-wrap; word-break:break-all; }
+  #detail h4 { margin:8px 0 4px; font-family: system-ui; color:var(--mut); }
+  #replay { grid-column: 1 / span 2; padding:8px 12px; }
+  #replay .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:6px; }
+  #replay input { padding:4px 6px; border:1px solid var(--line); border-radius:4px; width:140px; }
+  #rres td.ok { color:var(--ok); } #rres td.fail { color:var(--bad); font-weight:600; } #rres td.skip { color:var(--mut); }
+  .err { color:var(--bad); }
+  label.chk { display:flex; gap:4px; align-items:center; color:var(--mut); }
+</style>
+</head>
+<body>
+<header>
+  <strong>camcap</strong>
+  <input id="ip" type="text" placeholder="Camera IP，例如 192.168.1.64" size="22">
+  <label class="chk"><input id="testmode" type="checkbox"> test mode（無 driver，client 指向 relay port）</label>
+  <button id="btnStart" class="primary">Start</button>
+  <button id="btnStop" disabled>Stop</button>
+  <button id="btnClear">Clear</button>
+  <span style="border-left:1px solid var(--line);height:20px"></span>
+  <label class="chk"><input id="redact" type="checkbox" checked> 下載前遮罩密碼</label>
+  <button id="btnJsonl">Download JSONL</button>
+  <button id="btnHar">Download HAR</button>
+  <button id="btnLoad">Load log…</button>
+  <span id="status">idle</span>
+</header>
+<main>
+  <section id="list">
+    <table>
+      <thead><tr><th>#</th><th>time</th><th>proto</th><th>method</th><th>command</th><th>auth</th><th>status</th><th>ms</th><th>port</th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+  </section>
+  <section id="detail">選一列看 request / response。</section>
+  <section id="replay">
+    <div class="row">
+      <strong>Replay</strong>
+      <input id="rTarget" placeholder="target IP（空＝原 camera）">
+      <input id="rPortMap" placeholder="port map 80:8080" style="width:120px">
+      <input id="rUser" placeholder="username">
+      <input id="rPass" type="password" placeholder="password">
+      <label>speed <select id="rSpeed"><option value="1">1× 原速</option><option value="2">2×</option><option value="5">5×</option><option value="0">全速</option></select></label>
+      <label>auth <select id="rAuth"><option value="auto">auto（raw→re-auth）</option><option value="raw">raw only</option><option value="reauth">re-auth only</option></select></label>
+      <label class="chk"><input id="rStop" type="checkbox"> stop on error</label>
+      <label class="chk"><input id="rSel" type="checkbox"> 只重播選取列</label>
+      <button id="btnReplay" class="primary">▶ Replay</button>
+      <button id="btnRCancel" disabled>Cancel</button>
+      <span id="rStatus" style="color:var(--mut)"></span>
+    </div>
+    <table><thead><tr><th>#</th><th>command</th><th>orig</th><th>replay</th><th>auth</th><th>ms</th><th>result</th></tr></thead><tbody id="rres"></tbody></table>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const api = () => window.pywebview.api;
+let events = new Map(), selected = new Set(), lastRendered = 0, running = false;
+
+function esc(s){ return String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function stCls(s){ return s ? 'st-' + String(s)[0] : ''; }
+
+function render(){
+  const tb = $('rows'); tb.innerHTML = '';
+  for (const e of [...events.values()].sort((a,b)=>a.id-b.id)) {
+    const tr = document.createElement('tr'); tr.dataset.id = e.id;
+    if (selected.has(e.id)) tr.className = 'sel';
+    tr.innerHTML = `<td>${e.id}</td><td>${esc(e.iso_ts.slice(11,23))}</td><td><span class="tag ${e.proto}">${e.proto}</span></td>
+      <td>${esc(e.method||'')}</td><td class="url" title="${esc(e.url||'')}">${esc(e.label)}${e.vendor && e.proto==='cgi' ? ' <small style="color:#9ca3af">'+esc(e.vendor)+'</small>':''}</td>
+      <td>${esc(e.auth||'')}</td><td class="${stCls(e.resp_status)}">${e.resp_status ?? (e.note? '⚠':'…')}</td><td>${e.latency_ms ?? ''}</td><td>${e.dst_port}</td>`;
+    tr.onclick = ev => { if (ev.ctrlKey) { selected.has(e.id) ? selected.delete(e.id) : selected.add(e.id); } else { selected = new Set([e.id]); } render(); showDetail(e); };
+    tb.appendChild(tr);
+  }
+  if (autoScroll) $('list').scrollTop = $('list').scrollHeight;
+}
+let autoScroll = true;
+$('list').onscroll = () => { const l = $('list'); autoScroll = l.scrollTop + l.clientHeight >= l.scrollHeight - 20; };
+
+function hdrs(h){ return Object.entries(h||{}).map(([k,v])=>`${k}: ${v}`).join('\n'); }
+function showDetail(e){
+  $('detail').innerHTML = `<h4>${esc(e.method||'')} ${esc(e.url||'')}</h4>${esc(hdrs(e.req_headers))}\n\n${esc(e.req_body)}
+    <h4>response ${e.resp_status ?? ''} ${e.latency_ms!=null ? e.latency_ms+' ms':''}</h4>${esc(hdrs(e.resp_headers))}\n\n${esc(e.resp_body)}${e.note ? '<h4>note</h4>'+esc(e.note):''}`;
+}
+
+async function poll(){
+  try {
+    const list = await api().poll(0);          // small logs: full refresh keeps late responses in sync
+    for (const e of list) events.set(e.id, e);
+    render();
+    const st = await api().status();
+    $('status').textContent = `${st.mode} · ${st.events} events` + (st.errors && st.errors.length ? ' · ⚠ ' + st.errors[st.errors.length-1] : '');
+  } catch (err) { /* webview not ready yet */ }
+}
+
+$('btnStart').onclick = async () => {
+  const r = await api().start($('ip').value, $('testmode').checked, 80);
+  if (!r.ok) { alert(r.error); return; }
+  running = true; $('btnStart').disabled = true; $('btnStop').disabled = false;
+  if ($('testmode').checked) alert(`Test mode：把 client 指向 http://<這台PC>:${r.status.relay_port}/`);
+};
+$('btnStop').onclick = async () => { await api().stop(); running = false; $('btnStart').disabled = false; $('btnStop').disabled = true; };
+$('btnClear').onclick = async () => { await api().clear(); events.clear(); selected.clear(); render(); $('detail').textContent=''; };
+$('btnJsonl').onclick = async () => { const r = await api().download('jsonl', $('redact').checked); if (!r.ok && r.error!=='cancelled') alert(r.error); };
+$('btnHar').onclick  = async () => { const r = await api().download('har',   $('redact').checked); if (!r.ok && r.error!=='cancelled') alert(r.error); };
+$('btnLoad').onclick = async () => { const r = await api().load(); if (r.ok) { events.clear(); await poll(); } };
+
+let rTimer = null;
+$('btnReplay').onclick = async () => {
+  const opts = { target_ip: $('rTarget').value, port_map: $('rPortMap').value, username: $('rUser').value, password: $('rPass').value,
+                 speed: parseFloat($('rSpeed').value), auth_mode: $('rAuth').value, stop_on_error: $('rStop').checked,
+                 event_ids: $('rSel').checked ? [...selected] : [] };
+  const r = await api().replay(opts);
+  if (!r.ok) { alert(r.error); return; }
+  $('btnReplay').disabled = true; $('btnRCancel').disabled = false; $('rres').innerHTML = '';
+  rTimer = setInterval(pollReplay, 400);
+};
+$('btnRCancel').onclick = () => api().replay_cancel();
+async function pollReplay(){
+  const r = await api().replay_poll();
+  const tb = $('rres'); tb.innerHTML = '';
+  let fail = 0;
+  for (const x of r.results) {
+    const cls = x.skipped ? 'skip' : (x.ok ? 'ok' : 'fail'); if (cls==='fail') fail++;
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${x.event_id}</td><td class="url">${esc(x.label)}</td><td>${x.orig_status ?? '-'}</td><td>${x.status ?? '-'}</td><td>${esc(x.auth_used)}</td><td>${x.elapsed_ms.toFixed(1)}</td><td class="${cls}">${x.skipped ? 'skip: '+esc(x.error) : (x.ok ? 'ok' : 'MISMATCH '+esc(x.error))}</td>`;
+    tb.appendChild(tr);
+  }
+  $('rStatus').textContent = `${r.results.length}/${r.total} · ${fail} mismatch` + (r.running ? ' · running…' : ' · done');
+  if (!r.running) { clearInterval(rTimer); $('btnReplay').disabled = false; $('btnRCancel').disabled = true; }
+}
+
+window.addEventListener('pywebviewready', () => { poll(); setInterval(poll, 600); });
+</script>
+</body>
+</html>
